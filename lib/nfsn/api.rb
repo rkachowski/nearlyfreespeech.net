@@ -1,6 +1,6 @@
+require 'httparty'
 require 'digest'
 require 'securerandom'
-
 
 module Nfsn
   class Api
@@ -9,20 +9,41 @@ module Nfsn
 
     def initialize api_key, username
 
-      @validator = ->(body = '', request_uri){
+      @validator = ->( request_uri,body = ''){
         timestamp = Time.now.to_i
         salt = SecureRandom.hex(16)
         body_hash = Digest::SHA1.hexdigest body
-        hash = DDigest::SHA1.hexdigest "#{username};#{timestamp};#{salt};#{api_key};#{request_uri};#{body_hash}"
+        hash = Digest::SHA1.hexdigest "#{username};#{timestamp};#{salt};#{api_key};#{request_uri};#{body_hash}"
 
-        "#{username};#{timestamp};#{salt}#{hash}"
+        { "X-NFSN-Authentication" => "#{username};#{timestamp};#{salt};#{hash}"}
       }
     end
 
+    def add_resource_record site, name, type, data, ttl=3600
+      uri = "/dns/#{site}/addRR"
 
-    def addRR site, name, type, data=3600
+      body = {
+          name:name,
+          type:type,
+          data:data,
+          ttl:ttl
+      }
 
-      
+      headers = @validator.call uri,HTTParty::HashConversions.to_params(body)
+
+      self.class.post(uri, body: body, headers: headers)
+    end
+    alias_method :addRR, :add_resource_record
+
+    def list_resource_records site, name='', type='', data=''
+      uri = "/dns/#{site}/listRRs"
+      body = {}
+
+      %w( name type data ).each {|d| body[d.to_sym] = eval(d) unless eval(d).empty? }
+
+      headers = @validator.call uri, HTTParty::HashConversions.to_params(body)
+
+      self.class.post(uri, query: body, headers: headers)
     end
   end
 end
